@@ -1,0 +1,74 @@
+---
+# tasks file for csgoserver
+- name: add apt architecture
+  shell: dpkg --add-architecture i386
+  register: shell_result
+  changed_when: shell_result.rc != 0
+
+- name: install lgsm csgo prerequisites
+  apt:
+    update_cache: yes
+    cache_valid_time: 86400
+    name: '{{ item }}'
+    state: latest
+  with_items:
+    - mailutils
+    - postfix
+    - curl
+    - wget
+    - file
+    - bzip2
+    - gzip
+    - unzip
+    - bsdmainutils
+    - python
+    - util-linux
+    - ca-certificates
+    - binutils
+    - bc
+    - tmux
+    - lib32gcc1
+    - libstdc++6
+    - libstdc++6:i386
+
+- name: add csgoserver user
+  user:
+    name: csgoserver
+    groups: sudo
+    password: '{{ user_password }}'
+
+- name: download lgsm script
+  get_url:
+    url: https://gameservermanagers.com/dl/linuxgsm.sh
+    dest: /home/csgoserver/linuxgsm.sh
+    owner: csgoserver
+    group: csgoserver
+    mode: 0755
+    validate_certs: no
+
+- name: check if csgoserver script is installed
+  stat:
+    path: /home/csgoserver/csgoserver
+  register: stat_result
+
+- name: install csgoserver lgsm script
+  shell: /bin/bash /home/csgoserver/linuxgsm.sh csgoserver
+  become_user: csgoserver
+  become: yes
+  when: not stat_result.stat.exists
+
+- name: install csgo dedicated server from steam
+  block:
+    - name: install csgo dedicated server with steamcmd
+      shell: /bin/bash /home/csgoserver/csgoserver auto-install
+      become_user: csgoserver
+      become: yes
+      register: shell_result
+      failed_when: '"Failure!" in shell_result.stdout'
+  rescue:
+    - name: check free disk space on csgoserver installation error
+      assert:
+        that: 
+          - "{{ item.mount == '/' and item.size_available >= 17179869184 }}"
+        msg: "Disk space is to low. Needs at least 16 GB free disk space for csgoserver."
+      with_items: '{{ ansible_mounts }}'

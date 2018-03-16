@@ -1,0 +1,4 @@
+---
+# defaults file for csgoserver
+# 'password' generated with 'mkpasswd --method=sha-512' on linux
+user_password: '$6$CxiBuizR$FnJ6vfeWOH.VWWYkvssK60VWEMVuxcga10.cHKE5w03W7QB9y2APWl2fv.WyXLKtaAZG5DG1XxcI4DsHYQZ74.'
