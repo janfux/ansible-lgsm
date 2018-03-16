@@ -1,0 +1,189 @@
+---
+# this playbook contains three plays:
+# - first play creates containers on proxmox as specified in inventory file
+# - the second play creates an inventory file with only the newly created containers
+# - the third play installes lgsm and csgoserver
+
+# play start
+- name: create containers on proxmox
+  hosts: csgoserver
+  # dont try to connect to vms before they are created
+  gather_facts: no
+  # more than one parallel execution can lead to duplicate vmids
+  serial: 1
+
+  vars:
+    api_host: 172.27.99.100
+    api_password: password
+    api_user: root@pam
+    cores: 4
+    disk: 20
+    groups: csgoserver
+    memory: 4096
+    ostemplate: 'nas-iso:vztmpl/ubuntu-16.04-standard_16.04-1_amd64.tar.gz'
+    password: 'password'
+    pubkey: "{{lookup('file', 'ssh/id_rsa.pub')}}"
+    storage: ceph_ct
+    swap: 512
+    timeout: 120
+    ip_net: '172.27.10'
+    ip_hostbase: 241
+    ip_address: '{{ip_net}}.{{ip_hostbase + ansible_play_hosts.index(inventory_hostname)}}'
+    ip_netmask: 24
+    ip_gw: '{{ip_net}}.1'
+    ip_netif: '{ "net0":"name=eth0,bridge=vmbr1,gw={{ip_gw}},ip={{ip_address}}/{{ip_netmask}}" }'
+    ansible_ssh_private_key_file: ssh/id_rsa
+    ansible_user: root
+
+  tasks:
+    - name: create container
+      proxmox:
+        api_user: '{{ api_user }}'
+        api_password: '{{ api_password }}'
+        api_host: '{{ api_host }}'
+        cores: '{{ cores }}'
+        disk: '{{ disk }}'
+        hostname: '{{ inventory_hostname }}'
+        memory: '{{ memory }}'
+        netif: '{{ ip_netif }}'
+        node: '{{ pcs_node }}'
+        ostemplate: '{{ ostemplate }}'
+        password: '{{ password }}'
+        pubkey: '{{ pubkey }}'
+        storage: '{{ storage }}'
+        swap: '{{ swap }}'
+        timeout: '{{ timeout }}'
+      delegate_to: localhost
+
+    - name: start container
+      proxmox:
+        hostname: '{{ inventory_hostname }}'
+        api_user: '{{ api_user }}'
+        api_password: '{{ api_password }}'
+        api_host: '{{ api_host }}'
+        state: started
+      delegate_to: localhost
+
+    - name: set host fact
+      set_fact:
+        ansible_host: '{{ ip_address }}'
+
+    - name: wait for ssh banner
+      wait_for:
+        port: 22
+        search_regex: OpenSSH
+        host: '{{ ansible_host }}'
+        sleep: 5
+        timeout: 60
+      delegate_to: localhost
+
+    - name: bootstrap host for ansible mgmt
+      raw: test -e /usr/bin/python || (apt -y update && apt install -y python-minimal)
+      changed_when: no
+
+    - name: add host to in-memory inventory
+      add_host:
+        hostname: '{{ inventory_hostname }}'
+        inventory_dir: '{{ inventory_dir }}'
+        groups: csgoserver
+      changed_when: no
+
+
+# play start
+- name: create static inventory file from newly created containers
+  hosts: csgoserver
+  connection: local
+  
+  vars:
+    ansible_ssh_private_key_file: ssh/id_rsa
+    ansible_user: root
+  
+  tasks:
+    - name: create static inventory file
+      template:
+        src: hosts.j2
+        dest: inventory/csgoserver
+
+
+# play start
+- name: install csgoserver with lgms
+  hosts: csgoserver
+
+  vars:
+    ansible_ssh_private_key_file: ssh/id_rsa
+    ansible_user: root
+
+  tasks:
+  - name: add apt architecture
+    shell: dpkg --add-architecture i386
+    register: shell_result
+    changed_when: shell_result.rc != 0
+
+  - name: install lgsm csgo prerequisites
+    apt:
+      update_cache: yes
+      cache_valid_time: 86400
+      name: '{{ item }}'
+      state: latest
+    with_items:
+      - mailutils
+      - postfix
+      - curl
+      - wget
+      - file
+      - bzip2
+      - gzip
+      - unzip
+      - bsdmainutils
+      - python
+      - util-linux
+      - ca-certificates
+      - binutils
+      - bc
+      - tmux
+      - lib32gcc1
+      - libstdc++6
+      - libstdc++6:i386
+
+  - name: add csgoserver user
+    user:
+      name: csgoserver
+      groups: sudo
+      # 'password' generated with 'mkpasswd --method=sha-512' on linux
+      password: '$6$CxiBuizR$FnJ6vfeWOH.VWWYkvssK60VWEMVuxcga10.cHKE5w03W7QB9y2APWl2fv.WyXLKtaAZG5DG1XxcI4DsHYQZ74.'
+
+  - name: download lgsm script
+    get_url:
+      url: https://gameservermanagers.com/dl/linuxgsm.sh
+      dest: /home/csgoserver/linuxgsm.sh
+      owner: csgoserver
+      group: csgoserver
+      mode: 0755
+      validate_certs: no
+
+  - name: check if csgoserver script is installed
+    stat:
+      path: /home/csgoserver/csgoserver
+    register: stat_result
+
+  - name: install csgoserver lgsm script
+    shell: /bin/bash /home/csgoserver/linuxgsm.sh csgoserver
+    become_user: csgoserver
+    become: yes
+    when: not stat_result.stat.exists
+
+  - name: install csgo dedicated server from steam
+    block:
+      - name: install csgo dedicated server with steamcmd
+        shell: /bin/bash /home/csgoserver/csgoserver auto-install
+        become_user: csgoserver
+        become: yes
+        register: shell_result
+        failed_when: '"Failure!" in shell_result.stdout'
+    rescue:
+      - name: check free disk space on csgoserver installation error
+        assert:
+          that: 
+            - "{{ item.mount == '/' and item.size_available >= 17179869184 }}"
+          msg: "Disk space is to low. Needs at least 16 GB free disk space for csgoserver."
+        with_items: '{{ ansible_mounts }}'

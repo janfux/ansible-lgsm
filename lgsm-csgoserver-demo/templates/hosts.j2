@@ -1,0 +1,8 @@
+{% for group in groups %}
+{% if groups[group] and group != 'all' and group != 'ungrouped' %}
+[{{ group }}]
+{% for host in groups[group] %}
+{{ host }} ansible_host={{ hostvars[host].ansible_host }} pcs_node={{ hostvars[host].pcs_node }}
+{% endfor %}
+{% endif %}
+{% endfor %}

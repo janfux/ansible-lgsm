@@ -1,0 +1,4 @@
+[csgoserver]
+csgoserver[001:002] pcs_node=pcs-gc-pve01
+csgoserver[004:005] pcs_node=pcs-gc-pve02
+csgoserver006 pcs_node=pcs-gc-pve03
