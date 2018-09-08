@@ -1,0 +1,133 @@
+---
+# Play
+- name: bootstrap host for ansible mgmt
+  hosts: cbecsgoservers
+  gather_facts: no
+  
+  tasks:
+  - name: bootstrap host for ansible mgmt
+    raw: test -e /usr/bin/python || (apt-get update && apt-get -y install python-minimal)
+    changed_when: no
+
+# Play
+- name: install cbecsgoserver with lgsm
+  hosts: cbecsgoservers
+
+  vars:
+    csgo_user: csgoserver
+    csgo_password: "{{ 'password'|password_hash('sha512') }}"
+    # number of csgoserver instances to create per server
+    csgo_count: 10
+    csgo_baseport_rcon: 21015
+
+  tasks:    
+  - name: update packages
+    apt:
+      update_cache: yes
+      upgrade: yes
+      cache_valid_time: 28800
+  
+#  - name: csgoserver | check free disk space
+#    fail:
+#      msg: "Disk space is to low. Csgoserver needs at least 16 GB free disk space."
+#    when: item.mount == '/' and item.size_available <= 17179869184
+#    with_items: '{{ ansible_mounts }}'
+
+  - name: csgoserver | check if i386 is enabled
+    shell: dpkg --print-foreign-architectures | grep i386
+    register: result_i386_check
+    changed_when: result_i386_check.rc == 1
+    failed_when: result_i386_check.rc > 1
+    
+  - name: csgoserver | enable i386
+    command: dpkg --add-architecture i386
+    when: result_i386_check.rc == 1
+
+  - name: csgoserver | install prerequisites
+    apt:
+      name: '{{ packages }}'
+      state: latest
+    vars:
+      packages:
+        - mailutils
+        - postfix
+        - curl
+        - wget
+        - file
+        - bzip2
+        - gzip
+        - unzip
+        - bsdmainutils
+        - python
+        - util-linux
+        - ca-certificates
+        - binutils
+        - bc
+        - tmux
+        - lib32gcc1
+        - libstdc++6
+        - libstdc++6:i386
+        - jq
+
+  - name: csgoserver | add service user
+    user:
+      name: "{{ csgo_user }}"
+      password: '{{ csgo_password }}'
+
+  - name: csgoserver | download lgsm script
+    get_url:
+      url: https://linuxgsm.sh
+      dest: /home/{{ csgo_user }}/linuxgsm.sh
+      owner: "{{ csgo_user }}"
+      group: "{{ csgo_user }}"
+      mode: 0755
+      validate_certs: no
+      force: yes
+
+  - name: check if csgoserver script is installed
+    stat:
+      path: /home/{{ csgo_user }}/csgoserver
+    register: stat_result
+
+  - name: csgoserver | install csgoserver script
+    shell: ./linuxgsm.sh csgoserver
+    args:
+      chdir: /home/{{ csgo_user }}
+    when: not stat_result.stat.exists
+    become_user: "{{ csgo_user }}"
+
+# TODO: check if already installed, then update
+
+  - name: csgoserver | install csgo dedicated server from steam
+    shell: ./csgoserver auto-install
+    args:
+      chdir: /home/{{ csgo_user }}
+    become_user: "{{ csgo_user }}"
+    register: shell_result
+    failed_when: '"Failure!" in shell_result.stdout'
+  
+  - name: csgoserver | create separate instances by hardlinking
+    file:
+      src: /home/{{ csgo_user }}/csgoserver
+      dest: /home/{{ csgo_user }}/{{ item }}
+      state: hard
+    with_sequence: start=1 end={{ csgo_count }} format=csgoserver%02d
+    become_user: "{{ csgo_user }}"
+    
+  - name: csgoserver | create instances lgsm configuration file
+    template:
+      src: lgsm-csgoserver.cfg.j2
+      dest: /home/{{ csgo_user }}/lgsm/config-lgsm/csgoserver/{{ item }}
+    with_sequence: start=1 end={{ csgo_count }} format=csgoserver%02d.cfg
+    become_user: "{{ csgo_user }}"
+
+  - name: csgoserver | create instances csgo configuration file
+    template:
+      src: csgoserver.cfg.j2
+      dest: /home/{{ csgo_user }}/serverfiles/csgo/cfg/{{ item }}
+    with_sequence: start=1 end={{ csgo_count }} format=csgoserver%02d.cfg
+    become_user: "{{ csgo_user }}"
+
+
+
+

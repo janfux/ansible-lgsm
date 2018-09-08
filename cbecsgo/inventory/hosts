@@ -1,0 +1,4 @@
+[cbecsgoservers]
+cbecsgo01 ansible_host=10.10.10.201
+cbecsgo02 ansible_host=10.10.10.202
+cbecsgo03 ansible_host=10.10.10.203
