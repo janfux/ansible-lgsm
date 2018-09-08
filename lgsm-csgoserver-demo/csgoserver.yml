@@ -106,7 +106,7 @@
 
 
 # play start
-- name: install csgoserver with lgms
+- name: install csgoserver with lgsm
   hosts: csgoserver
 
   vars:
