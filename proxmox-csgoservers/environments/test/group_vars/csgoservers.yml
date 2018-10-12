@@ -1,0 +1,4 @@
+---
+# variables for linked clone csgoservers
+# user is root
+ansible_password: "Intel386"

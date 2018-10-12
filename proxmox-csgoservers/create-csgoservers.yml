@@ -1,0 +1,91 @@
+---
+# Play 1: Create linked clone csgoserver conatiners on proxmox host or cluster
+- name: Create csgoservers
+  hosts: csgoservers
+  # containers are not ready yet to be discovered
+  gather_facts: no
+  # create one-by-one to avoid race on proxmox host
+  serial: 1
+
+  vars_files:
+
+  vars:
+    # make sure you can login with ssh here!
+    # eg: ssh-keygen && ssh-copy-id root@172.27.99.101
+    proxmox_host: "172.27.99.101"
+    # csgoserver container template id
+    # can also be set in inventory
+    pve_ct_tpl_id: 9002
+
+  tasks:
+  - name: Get next VM ID
+    command: "pvesh get /cluster/nextid"
+    register: nextid
+    delegate_to: "{{ proxmox_host }}"
+
+  - name: Save nextid
+    set_fact:
+      newid: "{{ nextid.stdout | regex_replace('(\\W+)') | int }}"
+
+  - name: Clone CT
+    command: "pct clone {{ pve_ct_tpl_id }} {{ newid }} -hostname {{ inventory_hostname }} -target {{ pve_node }}"
+    delegate_to: "{{ proxmox_host }}"
+
+  - name: Set network on CT
+    command: "pct set {{ newid }} -net0 \"name=eth0,bridge=vmbr10,ip={{ ansible_host }}/24,gw={{ ansible_host.split('.')[0:3] | join('.') + '.1' }}\""
+    delegate_to: "{{ proxmox_host }}"
+
+  - name: Start CT
+    command: "pct start {{ newid }}"
+    delegate_to: "{{ pve_node }}"
+
+  - name: Copy proxmox root public ssh key into container
+    block:
+      - command: "pct push {{ newid }} /root/.ssh/id_rsa.pub /tmp/id_rsa.pub"
+      - command: "pct exec {{ newid }} \"cat /tmp/id_rsa.pub >> /root/.ssh/authorized_keys\""
+      - command: "pct exec {{ newid }} ssh-keyscan {{ proxmox_host }}"
+    delegate_to: "{{ pve_node }}"
+
+  - name: Wait for CT SSH
+    wait_for:
+      port: 22
+      search_regex: OpenSSH
+      host: "{{ ansible_host }}"
+      sleep: 5
+      timeout: 120
+      delegate_to: localhost
+
+  - name: Bootstrap CT for ansible
+    raw: test -e /usr/bin/python || (apt -y update && apt install -y python-minimal)
+    changed_when: no
+
+# Play 2: Update containers os, lgsm an csgoserver
+- name: Update csgoservers
+  hosts: csgoservers
+
+  tasks:
+    - name: Update OS
+      apt:
+        update_cache: yes
+        upgrade: yes
+        cache_valid_time: 28800
+      register: os_update
+
+    - name: Update CS:GO server
+      block:
+        # update lgsm
+        - shell: "./csgoserver lgsm-update"
+          args:
+            executable: "/bin/bash"
+            chdir: "/home/csgoserver"
+        # update csgoserver
+        - shell: "./csgoserver update"
+          args:
+            executable: "/bin/bash"
+            chdir: "/home/csgoserver"
+      become: yes
+      become_user: csgoserver
+
+    - name: Restart Server
+      reboot:
+      when: os_update.reboot_required
