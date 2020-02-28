@@ -1,15 +1,26 @@
-# Ansible roles for LGSM gameserver deployment
+# LGSM gameserver deployment
 
-Automate repetitive task in the deployment of gameservers with linux game server manager lgsm.
+WORK IN PROGRESS / POC / Archived
 
-Contains a demo for deployment of csgoserver deployment which can be adapted to fit to most game servers in lgsm.
+Various attempts to automate repetitive tasks deploying gameservers with lgsm - linux game server manager - and ansible.
 
-For new servers, try to go from playbook to role!
+All ssh keys in this project are only used for demo purposes
 
-Base OS for the demo is Ubuntu Linux 16.04 server, but playbooks and roles can be adapted to fit more linux os.
+Contains:
 
-Links:
+- cbecsgo: an ansible deployment of multiple csgoservers used for LAN parties
+- lgsm-csgoserver-demo: a demo ansible csgoserver deployment used for demo and training
+- proxmox-csgoservers: a demo ansible csgoserver deployment to vms on proxmox virtualization environment
+- roles: ansible roles for csgoserver and factorio server
 
-- Ansible: https://www.ansible.com/ 
-- LGSM: https://linuxgsm.com/
-- RedHat Ansible intro class: https://www.redhat.com/en/services/training/do007-ansible-essentials-simplicity-automation-technical-overview
+Base OS for the demo is Ubuntu Linux 16.04 server, but playbooks and roles can be adapted to fit different linux os.
+
+## Todo
+
+- Split up into separate repos
+
+## Links
+
+- [LGSM](https://linuxgsm.com/)
+- [Ansible](https://www.ansible.com/)
+- [RedHat Ansible intro class](https://www.redhat.com/en/services/training/do007-ansible-essentials-simplicity-automation-technical-overview)

@@ -10,7 +10,7 @@ It's meant to be used as a quick deployment method for game events/ LAN parties.
 - Proxmox ubuntu or debian container installed with lgsm csgoserver per https://linuxgsm.com/lgsm/csgoserver/, converted to template
 
 - Ansible inventory file with hostnames, ip addresses, proxmox node and possible other info on csgoservers
-    - Snippet:
+  - Snippet:
 
     ````ini
     [csgoserver]
@@ -30,7 +30,6 @@ It's meant to be used as a quick deployment method for game events/ LAN parties.
 
 Work in Progress ideas...
 
-
 ## 1. Create linked clone from template container
 
 - best done with pvesh command on proxmox node, as ansible proxmox module does not support linked clones from containers (yet). See: https://github.com/ansible/ansible/issues/40921
@@ -48,7 +47,7 @@ Work in Progress ideas...
     - name: Clone VM
       command: "pvesh create /nodes/{{ node }}/qemu/{{ vm_id }}/clone -newid {{ newid }} -name {{ name }}"
     ````
-    
+
 - for more pvesh commands like setting ip, add shh public key etc, see ``man pvesh`` on proxmox.
 
 ### 1a. Bootstrap for ansible
